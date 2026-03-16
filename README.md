@@ -54,6 +54,7 @@ Key environment variables for Redis/Celery:
 ### 2) Run migrations
 
 ```bash
+python manage.py makemigrations
 python manage.py migrate
 ```
 
@@ -63,7 +64,6 @@ This project uses Redis as the message broker for Celery. Make sure Redis is ins
 
 **Install Redis (Ubuntu/Debian):**
 ```bash
-sudo apt update
 sudo apt install redis-server
 sudo systemctl start redis-server
 sudo systemctl enable redis-server
@@ -109,6 +109,25 @@ python manage.py runserver
 Server will run at: `http://127.0.0.1:8000/`
 
 ---
+
+## Testing
+
+This project includes comprehensive unit and integration tests using Django's test framework and Django REST Framework's test utilities.
+
+### Run Tests
+
+**Run all tests:**
+```bash
+python manage.py test
+```
+
+**Run tests for specific app:**
+```bash
+python manage.py test apps.customers
+python manage.py test apps.supports
+```
+
+
 
 ## Background Tasks
 
