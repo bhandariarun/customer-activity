@@ -51,18 +51,35 @@ Server will run at: `http://127.0.0.1:8000/`
 
 ---
 
+## API Documentation
+
+This project uses [drf-spectacular](https://drf-spectacular.readthedocs.io/) to generate OpenAPI 3.0 schemas and interactive documentation.
+
+### Interactive Documentation
+
+- **Swagger UI**: `http://127.0.0.1:8000/api/schema/swagger/`
+- **ReDoc**: `http://127.0.0.1:8000/api/schema/redoc/`
+
+### Raw Schema
+
+- **OpenAPI JSON**: `http://127.0.0.1:8000/api/schema/`
+
+---
+
 ## API Endpoints
 
 ### Sync external data
 
-**POST** `/sync`
+**POST** `/api/sync`
 
+Synchronizes customer and activity data from external sources (CRM and support systems). This operation is idempotent - running it multiple times will not create duplicates.
+
+**Request:**
 ```bash
-curl -X POST http://127.0.0.1:8000/sync
+curl -X POST http://127.0.0.1:8000/api/sync
 ```
 
-Example response:
-
+**Response (200 OK):**
 ```json
 {
   "customers_upserted": 10,
@@ -74,41 +91,142 @@ Example response:
 }
 ```
 
-Running `/sync` multiple times does **not** create duplicates.
+**Error Responses:**
+- `502 Bad Gateway`: External service failure
+- `500 Internal Server Error`: Unexpected error
 
 ---
 
 ### List customers
 
-**GET** `/customers`
+**GET** `/api/customers`
 
+Retrieves a paginated list of all customers.
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `page_size` (optional): Results per page (default: 10)
+
+**Request:**
 ```bash
-curl http://127.0.0.1:8000/customers
+curl "http://127.0.0.1:8000/api/customers?page=1&page_size=20"
+```
+
+**Response (200 OK):**
+```json
+{
+  "count": 10,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "name": "John Doe",
+      "email": "john@example.com",
+      "created_at": "2023-01-01T00:00:00Z",
+      "updated_at": "2023-01-01T00:00:00Z"
+    }
+  ]
+}
 ```
 
 ---
 
 ### Customer activities
 
-**GET** `/customers/{id}/activities`
+**GET** `/api/customers/{id}/activities`
 
+Retrieves all activities for a specific customer, ordered by creation date (newest first).
+
+**Path Parameters:**
+- `id`: Customer ID (integer)
+
+**Query Parameters:**
+- `page` (optional): Page number
+- `page_size` (optional): Results per page
+
+**Request:**
 ```bash
-curl http://127.0.0.1:8000/customers/1/activities
+curl "http://127.0.0.1:8000/api/customers/1/activities?page=1&page_size=10"
 ```
+
+**Response (200 OK):**
+```json
+{
+  "count": 5,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "external_id": "123",
+      "customer_id": 1,
+      "type": "ticket",
+      "title": "Support Request",
+      "content": "Issue description...",
+      "source": "support",
+      "ai_summary": null,
+      "ai_category": null,
+      "ai_priority": null,
+      "created_at": "2023-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `404 Not Found`: Invalid customer ID or customer not found
 
 ---
 
-### Filter activities
+### List and filter activities
 
-**GET** `/activities?source=support`  
-**GET** `/activities?type=ticket`  
-(Optional) `customer_id` filter: `/activities?customer_id=1`
+**GET** `/api/activities`
 
+Retrieves a paginated list of all activities with optional filtering.
+
+**Query Parameters:**
+- `type` (optional): Filter by activity type (`ticket`, `note`, etc.)
+- `source` (optional): Filter by source (`crm`, `support`)
+- `customer_id` (optional): Filter by customer ID
+- `page` (optional): Page number
+- `page_size` (optional): Results per page
+
+**Request Examples:**
 ```bash
-curl "http://127.0.0.1:8000/activities?source=support&type=ticket"
+# All activities
+curl "http://127.0.0.1:8000/api/activities"
+
+# Filter by source and type
+curl "http://127.0.0.1:8000/api/activities?source=support&type=ticket"
+
+# Filter by customer
+curl "http://127.0.0.1:8000/api/activities?customer_id=1"
 ```
 
----
+**Response (200 OK):**
+```json
+{
+  "count": 100,
+  "next": "http://127.0.0.1:8000/api/activities?page=2",
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "external_id": "123",
+      "customer_id": 1,
+      "type": "ticket",
+      "title": "Support Request",
+      "content": "Issue description...",
+      "source": "support",
+      "ai_summary": "Customer reported login issue",
+      "ai_category": "technical",
+      "ai_priority": "high",
+      "created_at": "2023-01-01T00:00:00Z"
+    }
+  ]
+}
+```
 
 ## Design Questions
 
