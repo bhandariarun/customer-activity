@@ -21,6 +21,8 @@ A Django REST service that syncs customer + support activity data from external 
 - Python + Django
 - Django REST Framework
 - SQLite (default)
+- Redis (message broker)
+- Celery (task queue)
 - `requests` for external HTTP calls
 
 ---
@@ -35,19 +37,110 @@ source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
 ```
 
+**Environment Configuration:**
+
+Copy the example environment file and configure it:
+
+```bash
+cp env.example .env
+```
+
+Edit `.env` to set your configuration values. The default Redis configuration should work if Redis is running on `localhost:6379`.
+
+Key environment variables for Redis/Celery:
+- `CELERY_BROKER_URL`: Redis URL for task queuing (default: `redis://localhost:6379/0`)
+- `CELERY_RESULT_BACKEND`: Redis URL for storing task results (default: same as broker)
+
 ### 2) Run migrations
 
 ```bash
 python manage.py migrate
 ```
 
-### 3) Start server
+### 3) Start Redis server
+
+This project uses Redis as the message broker for Celery. Make sure Redis is installed and running.
+
+**Install Redis (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+```
+
+**Install Redis (macOS with Homebrew):**
+```bash
+brew install redis
+brew services start redis
+```
+
+**Install Redis (Windows):**
+Download from [redis.io](https://redis.io/download) and run `redis-server.exe`.
+
+**Verify Redis is running:**
+```bash
+redis-cli ping
+# Should respond with "PONG"
+```
+
+### 4) Start Celery worker
+
+The application uses Celery for background task processing (AI classification of activities).
+
+**Start the main Celery worker:**
+```bash
+celery -A core worker -l info
+```
+
+**Start the AI-specific worker (recommended for better queue isolation):**
+```bash
+celery -A core worker -l info -Q ai -c 1
+```
+
+Keep these terminals running in the background while the application is active.
+
+### 5) Start server
 
 ```bash
 python manage.py runserver
 ```
 
 Server will run at: `http://127.0.0.1:8000/`
+
+---
+
+## Background Tasks
+
+This application uses Celery for asynchronous processing of AI classification tasks on activities.
+
+### Task Queues
+
+- **Main queue**: General tasks
+- **AI queue**: AI classification tasks (recommended to run separately for better isolation)
+
+### Monitoring Tasks
+
+**Check active tasks:**
+```bash
+celery -A core inspect active
+```
+
+**Check registered tasks:**
+```bash
+celery -A core inspect registered
+```
+
+**View Celery worker stats:**
+```bash
+celery -A core inspect stats
+```
+
+### Troubleshooting
+
+- **Redis connection issues**: Ensure Redis is running and accessible at the configured URL
+- **Tasks not processing**: Check that Celery workers are running and connected to the correct queues
+- **Task failures**: Check Celery logs for error details and retry configurations
 
 ---
 

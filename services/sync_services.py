@@ -13,6 +13,9 @@ from services.normalizers import (
     normalize_customer_from_crm,
 )
 
+# NEW: batch async task (Celery)
+from apps.supports.tasks import classify_activities_ai_batch
+
 
 @dataclass
 class SyncResult:
@@ -63,11 +66,24 @@ class SyncService:
                 continue
             normalized_activities.append(a)
 
+        created_or_updated_activity_ids: List[int] = []
+
         with transaction.atomic():
             customers_upserted = self._upsert_customers(normalized_customers)
-            activities_upserted, activities_orphaned = self._upsert_activities(
+            activities_upserted, activities_orphaned, activity_ids = self._upsert_activities(
                 normalized_activities
             )
+            created_or_updated_activity_ids = activity_ids
+
+            # Enqueue AI classification ONLY after DB commit (prevents race conditions)
+            BATCH_SIZE = 10
+
+            def _enqueue():
+                ids = created_or_updated_activity_ids
+                for i in range(0, len(ids), BATCH_SIZE):
+                    classify_activities_ai_batch.delay(ids[i : i + BATCH_SIZE])
+
+            transaction.on_commit(_enqueue)
 
         if customer_errors:
             warnings.append(
@@ -94,22 +110,21 @@ class SyncService:
     def _upsert_customers(self, customers: List[NormalizedCustomer]) -> int:
         upserted = 0
         for c in customers:
-            _, created = Customer.objects.update_or_create(
+            Customer.objects.update_or_create(
                 id=c.id,
                 defaults={"name": c.name, "email": c.email},
             )
-            # update_or_create counts as upsert; count both creates and updates
             upserted += 1
         return upserted
 
     def _upsert_activities(
         self, activities: List[NormalizedActivity]
-    ) -> Tuple[int, int]:
+    ) -> Tuple[int, int, List[int]]:
         upserted = 0
         orphaned = 0
+        ids: List[int] = []
 
         # Map known customers for faster lookup
-        # (for small data sets this is fine; for large scale use bulk patterns)
         customer_ids = {a.customer_id for a in activities if a.customer_id is not None}
         existing_customers = {
             c.id: c for c in Customer.objects.filter(id__in=customer_ids)
@@ -124,7 +139,7 @@ class SyncService:
             if a.customer_id is not None and customer is None:
                 orphaned += 1
 
-            Activity.objects.update_or_create(
+            obj, _created = Activity.objects.update_or_create(
                 source=a.source,
                 external_id=a.external_id,
                 defaults={
@@ -134,6 +149,7 @@ class SyncService:
                     "content": a.content,
                 },
             )
+            ids.append(obj.id)
             upserted += 1
 
-        return upserted, orphaned
+        return upserted, orphaned, ids
