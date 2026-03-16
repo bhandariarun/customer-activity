@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import environ
 import os
 from pathlib import Path
+import sys
 
 # 1. Initialize environ
 env = environ.Env(
@@ -176,3 +177,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+
+if "test" in sys.argv:
+    DATABASES = {"default": SQLITE_DB_CONFIG}
